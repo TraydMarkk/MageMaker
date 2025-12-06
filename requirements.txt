@@ -1,0 +1,9 @@
+# MageMaker Dependencies
+# Author: TraydMarkk
+#
+# System dependencies (install via pacman):
+#   sudo pacman -S python gtk4 libadwaita python-gobject
+#
+# Python dependencies:
+PyGObject>=3.42.0
+
