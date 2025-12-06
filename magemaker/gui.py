@@ -896,20 +896,129 @@ class CharacterEditor(Gtk.Box):
         
         self._updating = False
     
-    def _on_attribute_changed(self, name, value):
+    def _change_trait(self, trait_type: str, trait_name: str, new_value: int, 
+                     current_value: int = None) -> bool:
+        """Handle trait changes with cost calculation and restrictions.
+        Returns True if change was successful, False if blocked."""
         if self._updating or not self.character:
-            return
-        self.character.attributes[name] = value
+            return False
+        
+        char = self.character
+        
+        # Get current value if not provided
+        if current_value is None:
+            if trait_type == "attribute":
+                current_value = char.attributes.get(trait_name, 1)
+            elif trait_type == "ability":
+                current_value = char.abilities.get(trait_name, 0)
+            elif trait_type == "sphere":
+                current_value = char.spheres.get(trait_name, 0)
+            elif trait_type == "background":
+                current_value = char.backgrounds.get(trait_name, 0)
+            elif trait_type == "arete":
+                current_value = char.arete
+            elif trait_type == "willpower":
+                current_value = char.willpower
+            elif trait_type == "quintessence":
+                current_value = char.quintessence
+            else:
+                return False
+        
+        # Check minimum value (cannot go below baseline from previous modes)
+        min_value = char.get_minimum_value(trait_type, trait_name)
+        if new_value < min_value:
+            # Revert to minimum
+            widget = self.trait_widgets.get(f"{trait_type}_{trait_name}")
+            if widget:
+                self._updating = True
+                widget.set_value(min_value)
+                self._updating = False
+            
+            dialog = Adw.MessageDialog(
+                transient_for=self.app.win,
+                heading="Cannot Reduce Trait",
+                body=f"Cannot reduce {trait_name} below {min_value} (set in previous mode)."
+            )
+            dialog.add_response("ok", "OK")
+            dialog.present()
+            return False
+        
+        # Handle costs based on mode
+        if char.creation_mode == "freebie" and not self.app.tracker.storyteller_override:
+            # Calculate freebie cost
+            cost = char.calculate_freebie_cost(trait_type, trait_name, current_value, new_value)
+            if cost > 0:
+                if cost > char.freebie_points_available:
+                    dialog = Adw.MessageDialog(
+                        transient_for=self.app.win,
+                        heading="Insufficient Freebie Points",
+                        body=f"Need {cost} freebie points, but only {char.freebie_points_available} available."
+                    )
+                    dialog.add_response("ok", "OK")
+                    dialog.present()
+                    # Revert
+                    widget = self.trait_widgets.get(f"{trait_type}_{trait_name}")
+                    if widget:
+                        self._updating = True
+                        widget.set_value(current_value)
+                        self._updating = False
+                    return False
+                
+                char.freebie_points_spent += cost
+        
+        elif char.creation_mode == "xp" and not self.app.tracker.storyteller_override:
+            # Calculate XP cost
+            cost = char.calculate_xp_cost(trait_type, trait_name, current_value, new_value)
+            if cost > 0:
+                if cost > char.experience_available:
+                    dialog = Adw.MessageDialog(
+                        transient_for=self.app.win,
+                        heading="Insufficient Experience Points",
+                        body=f"Need {cost} XP, but only {char.experience_available} available."
+                    )
+                    dialog.add_response("ok", "OK")
+                    dialog.present()
+                    # Revert
+                    widget = self.trait_widgets.get(f"{trait_type}_{trait_name}")
+                    if widget:
+                        self._updating = True
+                        widget.set_value(current_value)
+                        self._updating = False
+                    return False
+                
+                char.experience_spent += cost
+        
+        # Apply the change
+        if trait_type == "attribute":
+            char.attributes[trait_name] = new_value
+        elif trait_type == "ability":
+            if new_value > 0:
+                char.abilities[trait_name] = new_value
+            elif trait_name in char.abilities:
+                del char.abilities[trait_name]
+        elif trait_type == "sphere":
+            char.spheres[trait_name] = new_value
+        elif trait_type == "background":
+            if new_value > 0:
+                char.backgrounds[trait_name] = new_value
+            elif trait_name in char.backgrounds:
+                del char.backgrounds[trait_name]
+        elif trait_type == "arete":
+            char.arete = new_value
+        elif trait_type == "willpower":
+            char.willpower = new_value
+            char.willpower_current = min(char.willpower_current, new_value)
+        elif trait_type == "quintessence":
+            char.quintessence = new_value
+        
         self.app.update_tracker()
+        return True
+    
+    def _on_attribute_changed(self, name, value):
+        self._change_trait("attribute", name, value)
     
     def _on_ability_changed(self, name, value):
-        if self._updating or not self.character:
-            return
-        if value > 0:
-            self.character.abilities[name] = value
-        elif name in self.character.abilities:
-            del self.character.abilities[name]
-        self.app.update_tracker()
+        self._change_trait("ability", name, value)
     
     def _on_sphere_changed(self, name, value):
         if self._updating or not self.character:
@@ -927,8 +1036,7 @@ class CharacterEditor(Gtk.Box):
                     widget.set_value(value)
                     self._updating = False
         
-        self.character.spheres[name] = value
-        self.app.update_tracker()
+        self._change_trait("sphere", name, value)
     
     def _on_affinity_changed(self, widget):
         if self._updating or not self.character:
@@ -955,32 +1063,17 @@ class CharacterEditor(Gtk.Box):
         self.app.update_tracker()
     
     def _on_background_changed(self, name, value):
-        if self._updating or not self.character:
-            return
-        if value > 0:
-            self.character.backgrounds[name] = value
-        elif name in self.character.backgrounds:
-            del self.character.backgrounds[name]
-        self.app.update_tracker()
+        self._change_trait("background", name, value)
     
     def _on_arete_changed(self, value):
-        if self._updating or not self.character:
-            return
-        self.character.arete = value
-        self.app.update_tracker()
+        self._change_trait("arete", "Arete", value)
     
     def _on_willpower_changed(self, value):
-        if self._updating or not self.character:
-            return
-        self.character.willpower = value
-        self.character.willpower_current = min(self.character.willpower_current, value)
-        self.app.update_tracker()
+        self._change_trait("willpower", "Willpower", value)
     
     def _on_quintessence_changed(self, widget):
-        if self._updating or not self.character:
-            return
-        self.character.quintessence = int(widget.get_value())
-        self.app.update_tracker()
+        value = int(widget.get_value())
+        self._change_trait("quintessence", "Quintessence", value)
     
     def _on_paradox_changed(self, widget):
         if self._updating or not self.character:
@@ -1213,6 +1306,23 @@ class ProgressTracker(Gtk.Box):
         
         char = self.app.current_character
         
+        # Check if mode can be advanced
+        can_advance, warnings = char.can_advance_mode()
+        
+        if not can_advance:
+            # Show warning dialog
+            dialog = Adw.MessageDialog(
+                transient_for=self.app.win,
+                heading="Cannot Advance Mode",
+                body="Please resolve all issues before advancing:\n\n" + "\n".join(f"• {w}" for w in warnings)
+            )
+            dialog.add_response("ok", "OK")
+            dialog.present()
+            return
+        
+        # Snapshot baseline before advancing
+        char.snapshot_baseline()
+        
         if char.creation_mode == "creation":
             char.creation_mode = "freebie"
             self.mode_button.set_label("Advance to XP Mode")
@@ -1362,6 +1472,22 @@ class ProgressTracker(Gtk.Box):
             affinity_label.set_xalign(0)
             affinity_label.add_css_class("warning")
             self.progress_box.append(affinity_label)
+        
+        # Show warnings if mode can't be advanced
+        can_advance, warnings = char.can_advance_mode()
+        if not can_advance and warnings:
+            self.progress_box.append(Gtk.Separator())
+            warning_header = Gtk.Label(label="⚠ Cannot Advance Mode")
+            warning_header.add_css_class("heading")
+            warning_header.add_css_class("error")
+            warning_header.set_xalign(0)
+            self.progress_box.append(warning_header)
+            
+            for warning in warnings:
+                warn_label = Gtk.Label(label=f"  • {warning}")
+                warn_label.set_xalign(0)
+                warn_label.add_css_class("error")
+                self.progress_box.append(warn_label)
     
     def _show_freebie_progress(self, char: Character):
         """Show freebie point mode progress."""
@@ -1419,6 +1545,22 @@ class ProgressTracker(Gtk.Box):
             label = Gtk.Label(label=f"  {name}: {cost}/dot")
             label.set_xalign(0)
             self.progress_box.append(label)
+        
+        # Show warnings if mode can't be advanced
+        can_advance, warnings = char.can_advance_mode()
+        if not can_advance and warnings:
+            self.progress_box.append(Gtk.Separator())
+            warning_header = Gtk.Label(label="⚠ Cannot Advance Mode")
+            warning_header.add_css_class("heading")
+            warning_header.add_css_class("error")
+            warning_header.set_xalign(0)
+            self.progress_box.append(warning_header)
+            
+            for warning in warnings:
+                warn_label = Gtk.Label(label=f"  • {warning}")
+                warn_label.set_xalign(0)
+                warn_label.add_css_class("error")
+                self.progress_box.append(warn_label)
     
     def _show_xp_progress(self, char: Character):
         """Show XP mode progress."""
@@ -1565,8 +1707,9 @@ class MageMakerApp(Adw.Application):
         self.current_character = None
         self.current_filepath = None
         
-        # Save directory
-        self.save_directory = os.path.expanduser("~/.local/share/magemaker/characters")
+        # Save directory - relative to current working directory
+        cwd = os.getcwd()
+        self.save_directory = os.path.join(cwd, "characters")
         os.makedirs(self.save_directory, exist_ok=True)
         
         self.connect("activate", self.on_activate)

@@ -83,6 +83,10 @@ class Character:
     creation_mode: str = "creation"  # creation, freebie, xp
     freebie_points_spent: int = 0
     
+    # Track baseline values from previous modes (cannot be reduced below these)
+    creation_baselines: dict = field(default_factory=dict)  # trait_name -> value
+    freebie_baselines: dict = field(default_factory=dict)   # trait_name -> value
+    
     # Metadata
     created_date: str = field(default_factory=lambda: datetime.now().isoformat())
     modified_date: str = field(default_factory=lambda: datetime.now().isoformat())
@@ -254,6 +258,160 @@ class Character:
             "spheres": rules["spheres"] - spent["spheres"]
         }
     
+    def get_minimum_value(self, trait_type: str, trait_name: str) -> int:
+        """Get minimum allowed value for a trait (from previous modes)."""
+        key = f"{trait_type}:{trait_name}"
+        # Check freebie baseline first (highest), then creation baseline
+        if key in self.freebie_baselines:
+            return self.freebie_baselines[key]
+        if key in self.creation_baselines:
+            return self.creation_baselines[key]
+        # Default minimums
+        if trait_type == "attribute":
+            return 1  # All attributes start at 1
+        return 0
+    
+    def can_advance_mode(self) -> tuple[bool, list[str]]:
+        """Check if character can advance to next mode. Returns (can_advance, warnings)."""
+        warnings = []
+        
+        if self.creation_mode == "creation":
+            remaining = self.get_creation_dots_remaining()
+            
+            # Check attributes
+            for cat, dots in remaining["attributes"].items():
+                if dots > 0:
+                    warnings.append(f"{cat} Attributes: {dots} dots remaining")
+            
+            # Check abilities
+            for cat, dots in remaining["abilities"].items():
+                if dots > 0:
+                    warnings.append(f"{cat}: {dots} dots remaining")
+            
+            # Check backgrounds
+            if remaining["backgrounds"] > 0:
+                warnings.append(f"Backgrounds: {remaining['backgrounds']} dots remaining")
+            
+            # Check spheres
+            if remaining["spheres"] > 0:
+                warnings.append(f"Spheres: {remaining['spheres']} dots remaining")
+            
+            # Check affinity sphere
+            if not self.affinity_sphere:
+                warnings.append("No Affinity Sphere selected")
+            
+            return len(warnings) == 0, warnings
+        
+        elif self.creation_mode == "freebie":
+            if self.freebie_points_available > 0:
+                warnings.append(f"Freebie Points: {self.freebie_points_available} remaining")
+            
+            return len(warnings) == 0, warnings
+        
+        # XP mode - can't advance further
+        return False, ["Already in XP mode"]
+    
+    def calculate_freebie_cost(self, trait_type: str, trait_name: str, 
+                              old_value: int, new_value: int) -> int:
+        """Calculate freebie point cost for changing a trait."""
+        if new_value <= old_value:
+            return 0  # No cost for decreases (though they may not be allowed)
+        
+        costs = FREEBIE_COSTS
+        total_cost = 0
+        
+        # Calculate cost for each dot increase
+        for rating in range(old_value, new_value):
+            if trait_type == "attribute":
+                total_cost += costs["attribute"]
+            elif trait_type == "ability":
+                total_cost += costs["ability"]
+            elif trait_type == "background":
+                # Check if double cost
+                double_cost_bgs = [b[0] for b in BACKGROUNDS["double_cost"]]
+                if trait_name in double_cost_bgs:
+                    total_cost += costs["background"] * 2
+                else:
+                    total_cost += costs["background"]
+            elif trait_type == "sphere":
+                total_cost += costs["sphere"]
+            elif trait_type == "arete":
+                total_cost += costs["arete"]
+            elif trait_type == "willpower":
+                total_cost += costs["willpower"]
+            elif trait_type == "quintessence":
+                # Quintessence is 1 point per 4 dots
+                if (rating + 1) % 4 == 0:
+                    total_cost += 1
+        
+        return total_cost
+    
+    def calculate_xp_cost(self, trait_type: str, trait_name: str,
+                         old_value: int, new_value: int) -> int:
+        """Calculate XP cost for changing a trait."""
+        if new_value <= old_value:
+            return 0  # No cost for decreases (though they may not be allowed)
+        
+        costs = EXPERIENCE_COSTS
+        total_cost = 0
+        
+        # Calculate cost for each dot increase
+        for rating in range(old_value, new_value):
+            if trait_type == "attribute":
+                total_cost += (rating + 1) * costs["attribute"]
+            elif trait_type == "ability":
+                if rating == 0:
+                    total_cost += costs["new_ability"]
+                else:
+                    total_cost += (rating + 1) * costs["ability"]
+            elif trait_type == "sphere":
+                if rating == 0:
+                    total_cost += costs["new_sphere"]
+                elif trait_name == self.affinity_sphere:
+                    total_cost += (rating + 1) * costs["affinity_sphere"]
+                else:
+                    total_cost += (rating + 1) * costs["other_sphere"]
+            elif trait_type == "arete":
+                total_cost += (rating + 1) * costs["arete"]
+            elif trait_type == "background":
+                total_cost += (rating + 1) * costs["background"]
+            elif trait_type == "willpower":
+                total_cost += (rating + 1) * costs["willpower"]
+        
+        return total_cost
+    
+    def snapshot_baseline(self):
+        """Snapshot current values as baseline for current mode."""
+        # Snapshot all current trait values
+        baselines = {}
+        
+        # Attributes
+        for attr, value in self.attributes.items():
+            baselines[f"attribute:{attr}"] = value
+        
+        # Abilities
+        for ability, value in self.abilities.items():
+            baselines[f"ability:{ability}"] = value
+        
+        # Backgrounds
+        for bg, value in self.backgrounds.items():
+            baselines[f"background:{bg}"] = value
+        
+        # Spheres
+        for sphere, value in self.spheres.items():
+            baselines[f"sphere:{sphere}"] = value
+        
+        # Core traits
+        baselines["arete"] = self.arete
+        baselines["willpower"] = self.willpower
+        baselines["quintessence"] = self.quintessence
+        
+        # Store in appropriate baseline dict
+        if self.creation_mode == "creation":
+            self.creation_baselines = baselines.copy()
+        elif self.creation_mode == "freebie":
+            self.freebie_baselines = baselines.copy()
+    
     def calculate_xp_cost_for_increase(self, trait_type: str, trait_name: str, 
                                        current_rating: int) -> int:
         """Calculate XP cost to increase a trait by 1."""
@@ -313,6 +471,8 @@ class Character:
             "experience_log": self.experience_log,
             "creation_mode": self.creation_mode,
             "freebie_points_spent": self.freebie_points_spent,
+            "creation_baselines": self.creation_baselines,
+            "freebie_baselines": self.freebie_baselines,
             "created_date": self.created_date,
             "modified_date": self.modified_date,
             "notes": self.notes,

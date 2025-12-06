@@ -73,7 +73,7 @@ magemaker
 
 ## Character Storage
 
-Characters are saved to: `~/.local/share/magemaker/characters/`
+Characters are saved to: `characters/` folder in the directory where MageMaker is run from.
 
 ## License
 
