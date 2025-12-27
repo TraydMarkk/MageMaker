@@ -49,13 +49,18 @@ sudo pacman -S python gtk4 libadwaita python-gobject
 
 ### Run the Application
 
+**Quick launch (from project directory):**
+```bash
+./launch.sh
+```
+
+**Or run directly:**
 ```bash
 cd /path/to/MageMaker
 python -m magemaker.gui
 ```
 
-Or install as a package:
-
+**Or install as a package:**
 ```bash
 pip install -e .
 magemaker

@@ -529,7 +529,11 @@ class Character:
             for attr in attrs:
                 rating = self.attributes.get(attr, 1)
                 dots = "●" * rating + "○" * (5 - rating)
-                lines.append(f"- **{attr}:** {dots}")
+                spec = ""
+                specialty_key = f"attribute:{attr}"
+                if specialty_key in self.specialties:
+                    spec = f" ({', '.join(self.specialties[specialty_key])})"
+                lines.append(f"- **{attr}:** {dots}{spec}")
             lines.append("")
         
         # Abilities
@@ -674,7 +678,19 @@ class Character:
             p_dots = "●" * self.attributes.get(p_attr, 1) + "○" * (5 - self.attributes.get(p_attr, 1))
             s_dots = "●" * self.attributes.get(s_attr, 1) + "○" * (5 - self.attributes.get(s_attr, 1))
             m_dots = "●" * self.attributes.get(m_attr, 1) + "○" * (5 - self.attributes.get(m_attr, 1))
-            lines.append(f"{p_attr:<12} {p_dots}  {s_attr:<12} {s_dots}  {m_attr:<12} {m_dots}")
+            
+            # Add specialties if present
+            p_spec = ""
+            s_spec = ""
+            m_spec = ""
+            if f"attribute:{p_attr}" in self.specialties:
+                p_spec = f" ({', '.join(self.specialties[f'attribute:{p_attr}'])})"
+            if f"attribute:{s_attr}" in self.specialties:
+                s_spec = f" ({', '.join(self.specialties[f'attribute:{s_attr}'])})"
+            if f"attribute:{m_attr}" in self.specialties:
+                m_spec = f" ({', '.join(self.specialties[f'attribute:{m_attr}'])})"
+            
+            lines.append(f"{p_attr:<12} {p_dots}{p_spec}  {s_attr:<12} {s_dots}{s_spec}  {m_attr:<12} {m_dots}{m_spec}")
         lines.append("")
         
         # Abilities

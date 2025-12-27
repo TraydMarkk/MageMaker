@@ -89,7 +89,7 @@ class TraitRow(Gtk.Box):
     
     def __init__(self, name: str, max_dots: int = 5, current: int = 0,
                  min_dots: int = 0, on_change=None, editable: bool = True,
-                 show_specialty: bool = False):
+                 show_specialty: bool = False, on_specialty_change=None):
         super().__init__(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self.set_hexpand(True)
         
@@ -109,6 +109,8 @@ class TraitRow(Gtk.Box):
             self.specialty_entry = Gtk.Entry()
             self.specialty_entry.set_placeholder_text("Specialty")
             self.specialty_entry.set_width_chars(12)
+            if on_specialty_change:
+                self.specialty_entry.connect("changed", lambda e: on_specialty_change(name))
             self.append(self.specialty_entry)
         
         # Dot rating
@@ -365,7 +367,9 @@ class CharacterEditor(Gtk.Box):
             attr_grid.attach(header, col, 0, 1, 1)
             
             for row, attr in enumerate(attrs, 1):
-                trait_row = TraitRow(attr, 5, 1, 1, self._on_attribute_changed)
+                trait_row = TraitRow(attr, 5, 1, 1, self._on_attribute_changed,
+                                    show_specialty=True,
+                                    on_specialty_change=self._on_attribute_specialty_changed)
                 self.trait_widgets[f"attr_{attr}"] = trait_row
                 attr_grid.attach(trait_row, col, row, 1, 1)
             
@@ -434,7 +438,8 @@ class CharacterEditor(Gtk.Box):
             
             for row, ability in enumerate(abilities, 1):
                 trait_row = TraitRow(ability, 5, 0, 0, self._on_ability_changed, 
-                                    show_specialty=True)
+                                    show_specialty=True,
+                                    on_specialty_change=self._on_ability_specialty_changed)
                 self.trait_widgets[f"ability_{ability}"] = trait_row
                 grid.attach(trait_row, col, row, 1, 1)
             
@@ -1017,6 +1022,33 @@ class CharacterEditor(Gtk.Box):
     def _on_attribute_changed(self, name, value):
         self._change_trait("attribute", name, value)
     
+    def _on_attribute_specialty_changed(self, name):
+        """Handle attribute specialty text changes."""
+        if self._updating or not self.character:
+            return
+        widget = self.trait_widgets.get(f"attr_{name}")
+        if widget and widget.specialty_entry:
+            text = widget.specialty_entry.get_text().strip()
+            if text:
+                # Parse comma-separated specialties
+                specialties = [s.strip() for s in text.split(",") if s.strip()]
+                self.character.specialties[f"attribute:{name}"] = specialties
+            elif f"attribute:{name}" in self.character.specialties:
+                del self.character.specialties[f"attribute:{name}"]
+    
+    def _on_ability_specialty_changed(self, name):
+        """Handle ability specialty text changes."""
+        if self._updating or not self.character:
+            return
+        widget = self.trait_widgets.get(f"ability_{name}")
+        if widget and widget.specialty_entry:
+            text = widget.specialty_entry.get_text().strip()
+            if text:
+                specialties = [s.strip() for s in text.split(",") if s.strip()]
+                self.character.specialties[name] = specialties
+            elif name in self.character.specialties:
+                del self.character.specialties[name]
+    
     def _on_ability_changed(self, name, value):
         self._change_trait("ability", name, value)
     
@@ -1166,12 +1198,26 @@ class CharacterEditor(Gtk.Box):
             widget = self.trait_widgets.get(f"attr_{attr}")
             if widget:
                 widget.set_value(value)
+                # Load specialty
+                if widget.specialty_entry:
+                    specialty_key = f"attribute:{attr}"
+                    if specialty_key in character.specialties:
+                        specialties = character.specialties[specialty_key]
+                        widget.specialty_entry.set_text(", ".join(specialties))
+                    else:
+                        widget.specialty_entry.set_text("")
         
         # Abilities
         for key, widget in self.trait_widgets.items():
             if key.startswith("ability_"):
                 ability = key[8:]
                 widget.set_value(character.abilities.get(ability, 0))
+                # Load specialty
+                if widget.specialty_entry and ability in character.specialties:
+                    specialties = character.specialties[ability]
+                    widget.specialty_entry.set_text(", ".join(specialties))
+                elif widget.specialty_entry:
+                    widget.specialty_entry.set_text("")
         
         # Spheres
         self._update_affinity_options()
