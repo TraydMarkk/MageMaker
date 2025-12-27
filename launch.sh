@@ -11,3 +11,4 @@ fi
 # Launch MageMaker
 python3 -m magemaker.gui "$@"
 
+

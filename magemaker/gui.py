@@ -1715,7 +1715,7 @@ class CharacterList(Gtk.Box):
             return
         
         for filename in sorted(os.listdir(save_dir)):
-            if filename.endswith(".md"):
+            if filename.endswith(".M20"):
                 filepath = os.path.join(save_dir, filename)
                 
                 # Try to get character name
@@ -1723,7 +1723,7 @@ class CharacterList(Gtk.Box):
                     char = Character.load_from_markdown(filepath)
                     name = char.name
                 except:
-                    name = filename[:-3]
+                    name = filename[:-4]  # Remove .M20 extension
                 
                 row = Gtk.ListBoxRow()
                 row.filepath = filepath
@@ -1914,7 +1914,7 @@ class MageMakerApp(Adw.Application):
             safe_name = "".join(c for c in self.current_character.name if c.isalnum() or c in " -_").strip()
             if not safe_name:
                 safe_name = "New Character"
-            self.current_filepath = os.path.join(self.save_directory, f"{safe_name}.md")
+            self.current_filepath = os.path.join(self.save_directory, f"{safe_name}.M20")
         
         try:
             self.current_character.save_to_markdown(self.current_filepath)

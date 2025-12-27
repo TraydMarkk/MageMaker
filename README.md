@@ -28,7 +28,7 @@ A native GTK4/Adwaita application for Arch Linux to create and manage Mage: The 
   - Full faction support: Traditions, Technocratic Union, Disparates
 
 - **Save/Load System**
-  - Characters saved as readable Markdown (.md) files
+  - Characters saved as readable Markdown files with .M20 extension
   - Automatic character discovery in save folder
   - Export to plain text (.txt) for printing
 
@@ -73,7 +73,7 @@ magemaker
 3. **Track Progress**: The right sidebar shows remaining dots/points
 4. **Set Priorities**: Assign primary/secondary/tertiary for Attributes and Abilities
 5. **Advance Modes**: Click "Advance to Freebie Mode" when creation dots are spent
-6. **Save**: Click "Save" to store your character as a .md file
+6. **Save**: Click "Save" to store your character as a .M20 file
 7. **Export**: Click "Export TXT" to create a printable text file
 
 ## Character Storage
